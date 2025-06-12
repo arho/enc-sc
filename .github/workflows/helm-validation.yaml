@@ -15,8 +15,6 @@ on:
 
 jobs:
   lint-test:
-    defaults:
-      working-directory: ./infra/k8s/fastapi-challenge
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -31,9 +29,11 @@ jobs:
 
       - name: Run Helm Lint
         run: helm lint . --debug
+        working-directory: ./infra/k8s/fastapi-challenge
 
       - name: Run Helm Template
         run: helm template ci-test . --debug
+        working-directory: ./infra/k8s/fastapi-challenge
 
       - name: Create kind cluster
         # if: steps.list-changed.outputs.changed == 'true'
@@ -41,9 +41,11 @@ jobs:
 
       - name: Run Helm Install
         run: helm install ci-test .
+        working-directory: ./infra/k8s/fastapi-challenge
 
       - name: Run Helm Test
         run: helm test ci-test
+        working-directory: ./infra/k8s/fastapi-challenge
       # - uses: actions/setup-python@v5.3.0
       #   with:
       #     python-version: '3.x'
