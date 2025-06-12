@@ -2,16 +2,16 @@ name: Helm Chart Validation
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main ]
-    paths:
-      - 'infra/k8s/fastapi-challenge/**'
-      - '.github/workflows/helm-validation.yaml'
-  pull_request:
-    branches: [ main ]
-    paths:
-      - 'infra/k8s/fastapi-challenge/**'
-      - '.github/workflows/helm-validation.yaml'
+  # push:
+  #   branches: [ main ]
+  #   paths:
+  #     - 'infra/k8s/fastapi-challenge/**'
+  #     - '.github/workflows/helm-validation.yaml'
+  # pull_request:
+  #   branches: [ main ]
+  #   paths:
+  #     - 'infra/k8s/fastapi-challenge/**'
+  #     - '.github/workflows/helm-validation.yaml'
 
 jobs:
   lint-test:

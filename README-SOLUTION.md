@@ -5,3 +5,7 @@ Had some issues with the python version and the requirements. Did some searching
 To build the image, I used the example dockerfile in docker docs. Added the extra env vars except for the one that's resolved during runtime. Resolved a couple of version conflicts, and added gcc because the build was failing for psutils.
 
 Added a run for the fastapi command pip install. The image can be refined further with the new BuildKit to utilize the pip cache but is good enough for now.
+
+Added service monitors, added pipelines, added image publishing
+
+TODO: Terraform!
