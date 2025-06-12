@@ -1,0 +1,20 @@
+version: '3'
+
+tasks:
+  default:
+    desc: List all tasks
+    cmds:
+      - task -a
+  
+  build:
+    dir: .
+    desc: Build image with latest tag
+    cmds:
+      - task: build-latest
+  
+  build-*:
+    dir: .
+    desc: Build image with provided tag
+    cmds:
+      - docker build . -t arho0/fastapi-challenge:{{index .MATCH 0}}
+
