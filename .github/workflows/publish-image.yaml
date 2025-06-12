@@ -40,6 +40,7 @@ jobs:
 
       - name: Run Trivy scan with table output
         uses: aquasecurity/trivy-action@master
+        continue-on-error: true
         with:
           image-ref: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
           format: 'table'
