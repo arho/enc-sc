@@ -13,6 +13,76 @@ api:
   logLevel: "info"
   maxConnections: 100
 
+# ServiceMonitor configuration for Prometheus
+serviceMonitor:
+  # Whether to create a ServiceMonitor resource
+  enabled: true
+  
+  # Port name to scrape (should match service port name)
+  port: http
+  
+  # Path where metrics are exposed
+  path: /metrics
+  
+  # Scrape interval
+  interval: 30s
+  
+  # Scrape timeout
+  scrapeTimeout: 10s
+  
+  # HTTP scheme (http or https)
+  scheme: http
+  
+  # Additional labels for the ServiceMonitor
+  labels: {}
+    # prometheus: kube-prometheus
+    # release: prometheus-operator
+  
+  # Additional annotations for the ServiceMonitor
+  annotations: {}
+  
+  # TLS configuration (for HTTPS endpoints)
+  tlsConfig: {}
+    # serverName: your-app.example.com
+    # insecureSkipVerify: false
+    # ca:
+    #   secret:
+    #     name: ca-secret
+    #     key: ca.crt
+  
+  # Basic authentication
+  basicAuth: {}
+    # username:
+    #   name: basic-auth-secret
+    #   key: username
+    # password:
+    #   name: basic-auth-secret
+    #   key: password
+  
+  # Bearer token file path
+  bearerTokenFile: ""
+  
+  # Metric relabeling rules
+  metricRelabelings: []
+    # - sourceLabels: [__name__]
+    #   regex: 'unwanted_metric.*'
+    #   action: drop
+  
+  # Target relabeling rules
+  relabelings: []
+    # - sourceLabels: [__meta_kubernetes_pod_name]
+    #   targetLabel: pod_name
+  
+  # Namespace selector (optional)
+  namespaceSelector: {}
+    # matchNames:
+    #   - default
+    #   - production
+  
+  # Target labels to add from service
+  targetLabels: []
+    # - app_version
+    # - environment
 
 # This sets the container image more information can be found here: https://kubernetes.io/docs/concepts/containers/images/
 image:
