@@ -15,6 +15,8 @@ on:
 
 jobs:
   lint-test:
+    defaults:
+      working-directory: ./infra/k8s/fastapi-challenge
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -27,13 +29,28 @@ jobs:
         with:
           version: v3.17.0
 
-      - uses: actions/setup-python@v5.3.0
-        with:
-          python-version: '3.x'
-          check-latest: true
+      - name: Run Helm Lint
+        run: helm lint . --debug
 
-      - name: Set up chart-testing
-        uses: helm/chart-testing-action@v2.7.0
+      - name: Run Helm Template
+        run: helm template ci-test . --debug
+
+      - name: Create kind cluster
+        # if: steps.list-changed.outputs.changed == 'true'
+        uses: helm/kind-action@v1.12.0
+
+      - name: Run Helm Install
+        run: helm install ci-test .
+
+      - name: Run Helm Test
+        run: helm test ci-test
+      # - uses: actions/setup-python@v5.3.0
+      #   with:
+      #     python-version: '3.x'
+      #     check-latest: true
+
+      # - name: Set up chart-testing
+      #   uses: helm/chart-testing-action@v2.7.0
 
       # - name: Run chart-testing (list-changed)
       #   id: list-changed
@@ -43,14 +60,12 @@ jobs:
       #       echo "changed=true" >> "$GITHUB_OUTPUT"
       #     fi
 
-      - name: Run chart-testing (lint)
-        # if: steps.list-changed.outputs.changed == 'true'
-        run: ct lint --chart-dirs infra/k8s/fastapi-challenge --target-branch ${{ github.event.repository.default_branch }} --debug --all
+      # - name: Run chart-testing (lint)
+      #   # if: steps.list-changed.outputs.changed == 'true'
+      #   run: ct lint --chart-dirs infra/k8s/fastapi-challenge --target-branch ${{ github.event.repository.default_branch }} --debug --all
 
-      - name: Create kind cluster
-        # if: steps.list-changed.outputs.changed == 'true'
-        uses: helm/kind-action@v1.12.0
 
-      - name: Run chart-testing (install)
-        # if: steps.list-changed.outputs.changed == 'true'
-        run: ct install --chart-dirs infra/k8s/fastapi-challenge --target-branch ${{ github.event.repository.default_branch }} --debug --all
+
+      # - name: Run chart-testing (install)
+      #   # if: steps.list-changed.outputs.changed == 'true'
+      #   run: ct install --chart-dirs infra/k8s/fastapi-challenge --target-branch ${{ github.event.repository.default_branch }} --debug --all
