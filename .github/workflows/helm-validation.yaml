@@ -35,22 +35,22 @@ jobs:
       - name: Set up chart-testing
         uses: helm/chart-testing-action@v2.7.0
 
-      - name: Run chart-testing (list-changed)
-        id: list-changed
-        run: |
-          changed=$(ct list-changed --charts fastapi-challenge --chart-dirs infra/k8s --target-branch ${{ github.event.repository.default_branch }})
-          if [[ -n "$changed" ]]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
+      # - name: Run chart-testing (list-changed)
+      #   id: list-changed
+      #   run: |
+      #     changed=$(ct list-changed --charts fastapi-challenge --chart-dirs infra/k8s --target-branch ${{ github.event.repository.default_branch }})
+      #     if [[ -n "$changed" ]]; then
+      #       echo "changed=true" >> "$GITHUB_OUTPUT"
+      #     fi
 
       - name: Run chart-testing (lint)
-        if: steps.list-changed.outputs.changed == 'true'
-        run: ct lint --charts fastapi-challenge --chart-dirs infra/k8s --target-branch ${{ github.event.repository.default_branch }}
+        # if: steps.list-changed.outputs.changed == 'true'
+        run: ct lint --chart-dirs infra/k8s --target-branch ${{ github.event.repository.default_branch }}
 
       - name: Create kind cluster
-        if: steps.list-changed.outputs.changed == 'true'
+        # if: steps.list-changed.outputs.changed == 'true'
         uses: helm/kind-action@v1.12.0
 
       - name: Run chart-testing (install)
-        if: steps.list-changed.outputs.changed == 'true'
-        run: ct instal --charts fastapi-challenge --chart-dirs infra/k8s --target-branch ${{ github.event.repository.default_branch }}
+        # if: steps.list-changed.outputs.changed == 'true'
+        run: ct instal --chart-dirs infra/k8s --target-branch ${{ github.event.repository.default_branch }}
