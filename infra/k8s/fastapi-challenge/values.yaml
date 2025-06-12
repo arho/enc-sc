@@ -8,7 +8,7 @@ replicaCount: 1
 api:
   db:
     password: "foo"
-    secretKeyRef: ""
+    secret: ""
   baseUrl: "/api"
   logLevel: "info"
   maxConnections: 100

@@ -44,6 +44,23 @@ spec:
             - name: http
               containerPort: {{ .Values.service.port }}
               protocol: TCP
+          env:
+            {{- if .Values.api.db.secret }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.api.db.secret }}
+                  key: password
+            {{- else }}
+            - name: DB_PASSWORD
+              value: {{ .Values.api.db.password | quote }}
+            {{- end }}
+            - name: API_BASE_URL
+              value: {{ .Values.api.baseUrl | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.api.logLevel | quote }}
+            - name: MAX_CONNECTIONS
+              value: {{ .Values.api.maxConnections | quote }}
           {{- with .Values.livenessProbe }}
           livenessProbe:
             {{- toYaml . | nindent 12 }}
