@@ -1,0 +1,177 @@
+name: Destroy FastAPI Challenge
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to destroy'
+        required: true
+        type: choice
+        options:
+        - dev
+        - prod
+        - both
+      confirm:
+        description: 'Type "destroy" to confirm'
+        required: true
+        type: string
+
+env:
+  TF_VERSION: "1.10.3"
+  TASK_VERSION: "3.40.1"
+
+jobs:
+  validate-input:
+    name: Validate Destruction Request
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "destroy" ]; then
+            echo "❌ Confirmation failed. You must type 'destroy' exactly."
+            exit 1
+          fi
+          echo "✅ Confirmation validated"
+
+  destroy-dev:
+    name: Destroy Development
+    runs-on: ubuntu-latest
+    needs: validate-input
+    if: github.event.inputs.environment == 'dev' || github.event.inputs.environment == 'both'
+    environment: development
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Setup Task
+        uses: arduino/setup-task@v2
+        with:
+          version: ${{ env.TASK_VERSION }}
+
+      - name: Configure kubectl
+        uses: azure/k8s-set-context@v4
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBE_CONFIG }}
+
+      - name: Create tfvars for dev
+        working-directory: infra/terraform
+        run: |
+          cat > terraform-dev.tfvars << EOF
+          kubeconfig_path = "$HOME/.kube/config"
+          release_name = "fastapi-challenge-dev"
+          namespace = "fastapi-challenge-dev"
+          chart_path = "../k8s/fastapi-challenge"
+          values_file = "values-dev.yaml"
+          EOF
+
+      - name: Destroy dev environment
+        working-directory: infra/terraform
+        run: |
+          task init
+          terraform destroy -var-file="terraform-dev.tfvars" -auto-approve
+
+      - name: Verify dev cleanup
+        run: |
+          # Check that namespace is gone or empty
+          if kubectl get namespace fastapi-challenge-dev 2>/dev/null; then
+            echo "Checking remaining resources in namespace..."
+            kubectl get all -n fastapi-challenge-dev || true
+          else
+            echo "✅ Namespace fastapi-challenge-dev successfully removed"
+          fi
+
+  destroy-prod:
+    name: Destroy Production
+    runs-on: ubuntu-latest
+    needs: validate-input
+    if: github.event.inputs.environment == 'prod' || github.event.inputs.environment == 'both'
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Setup Task
+        uses: arduino/setup-task@v2
+        with:
+          version: ${{ env.TASK_VERSION }}
+
+      - name: Configure kubectl
+        uses: azure/k8s-set-context@v4
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBE_CONFIG }}
+
+      - name: Create tfvars for prod
+        working-directory: infra/terraform
+        run: |
+          cat > terraform-prod.tfvars << EOF
+          kubeconfig_path = "$HOME/.kube/config"
+          release_name = "fastapi-challenge"
+          namespace = "fastapi-challenge"
+          chart_path = "../k8s/fastapi-challenge"
+          values_file = "values-prod.yaml"
+          EOF
+
+      - name: Destroy production environment
+        working-directory: infra/terraform
+        run: |
+          task init
+          terraform destroy -var-file="terraform-prod.tfvars" -auto-approve
+
+      - name: Cleanup production secrets
+        run: |
+          # Remove the database secret if it exists
+          kubectl delete secret db-password -n fastapi-challenge --ignore-not-found=true
+
+      - name: Verify production cleanup
+        run: |
+          # Check that namespace is gone or empty
+          if kubectl get namespace fastapi-challenge 2>/dev/null; then
+            echo "Checking remaining resources in namespace..."
+            kubectl get all -n fastapi-challenge || true
+          else
+            echo "✅ Namespace fastapi-challenge successfully removed"
+          fi
+
+  summary:
+    name: Destruction Summary
+    runs-on: ubuntu-latest
+    needs: [destroy-dev, destroy-prod]
+    if: always() && needs.validate-input.result == 'success'
+    
+    steps:
+      - name: Create summary
+        run: |
+          echo "## 🗑️ Destruction Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ github.event.inputs.environment }}" == "both" ]; then
+            echo "**Environments:** Development and Production" >> $GITHUB_STEP_SUMMARY
+            echo "- Development: ${{ needs.destroy-dev.result }}" >> $GITHUB_STEP_SUMMARY
+            echo "- Production: ${{ needs.destroy-prod.result }}" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ github.event.inputs.environment }}" == "dev" ]; then
+            echo "**Environment:** Development" >> $GITHUB_STEP_SUMMARY
+            echo "- Status: ${{ needs.destroy-dev.result }}" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ github.event.inputs.environment }}" == "prod" ]; then
+            echo "**Environment:** Production" >> $GITHUB_STEP_SUMMARY
+            echo "- Status: ${{ needs.destroy-prod.result }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Requested by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Timestamp:** $(date -u)" >> $GITHUB_STEP_SUMMARY

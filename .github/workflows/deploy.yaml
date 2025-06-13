@@ -1,0 +1,253 @@
+name: Deploy FastAPI Challenge
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+        - dev
+        - prod
+  push:
+    branches: [ main ]
+    paths:
+      - 'infra/**'
+      - 'app/**'
+      - 'Dockerfile'
+
+env:
+  TF_VERSION: "1.10.3"
+  TASK_VERSION: "3.40.1"
+
+jobs:
+  deploy-dev:
+    name: Deploy to Development
+    runs-on: ubuntu-latest
+    environment: development
+    outputs:
+      release_name: ${{ steps.deploy.outputs.release_name }}
+      namespace: ${{ steps.deploy.outputs.namespace }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Setup Task
+        uses: arduino/setup-task@v2
+        with:
+          version: ${{ env.TASK_VERSION }}
+
+      - name: Configure kubectl
+        uses: azure/k8s-set-context@v4
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBE_CONFIG }}
+
+      - name: Create tfvars for dev
+        working-directory: infra/terraform
+        run: |
+          cat > terraform-dev.tfvars << EOF
+          kubeconfig_path = "$HOME/.kube/config"
+          release_name = "fastapi-challenge-dev"
+          namespace = "fastapi-challenge-dev"
+          chart_path = "../k8s/fastapi-challenge"
+          values_file = "values-dev.yaml"
+          EOF
+
+      - name: Deploy to dev
+        id: deploy
+        working-directory: infra/terraform
+        run: |
+          # Initialize and apply
+          task init
+          terraform apply -var-file="terraform-dev.tfvars" -auto-approve
+          
+          # Capture outputs
+          echo "release_name=$(terraform output -raw release_name)" >> $GITHUB_OUTPUT
+          echo "namespace=$(terraform output -raw namespace)" >> $GITHUB_OUTPUT
+
+      - name: Verify dev deployment
+        working-directory: infra/terraform
+        run: |
+          task status ENV=dev
+          
+          # Wait for pods to be ready
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=fastapi-challenge -n fastapi-challenge-dev --timeout=300s
+          
+          # Test the application
+          kubectl port-forward -n fastapi-challenge-dev svc/fastapi-challenge-dev-fastapi-challenge 8080:8080 &
+          sleep 5
+          curl -f http://localhost:8080/ || exit 1
+          curl -f http://localhost:8080/data || exit 1
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = `## 🚀 Development Deployment Complete
+            
+            **Environment:** Development
+            **Release:** ${{ steps.deploy.outputs.release_name }}
+            **Namespace:** ${{ steps.deploy.outputs.namespace }}
+            
+            **Access the application:**
+            \`\`\`bash
+            kubectl port-forward -n ${{ steps.deploy.outputs.namespace }} svc/${{ steps.deploy.outputs.release_name }}-fastapi-challenge 8080:8080
+            \`\`\`
+            
+            Then visit: http://localhost:8080`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+  deploy-prod:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    environment: production
+    needs: deploy-dev
+    if: github.ref == 'refs/heads/main' || github.event.inputs.environment == 'prod'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Setup Task
+        uses: arduino/setup-task@v2
+        with:
+          version: ${{ env.TASK_VERSION }}
+
+      - name: Configure kubectl
+        uses: azure/k8s-set-context@v4
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBE_CONFIG }}
+
+      - name: Create production database secret
+        run: |
+          # Create the secret if it doesn't exist
+          kubectl create secret generic db-password \
+            --from-literal=password="${{ secrets.PROD_DB_PASSWORD }}" \
+            --namespace=fastapi-challenge \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Create tfvars for prod
+        working-directory: infra/terraform
+        run: |
+          cat > terraform-prod.tfvars << EOF
+          kubeconfig_path = "$HOME/.kube/config"
+          release_name = "fastapi-challenge"
+          namespace = "fastapi-challenge"
+          chart_path = "../k8s/fastapi-challenge"
+          values_file = "values-prod.yaml"
+          EOF
+
+      - name: Deploy to production
+        id: deploy
+        working-directory: infra/terraform
+        run: |
+          # Initialize and apply
+          task init
+          terraform apply -var-file="terraform-prod.tfvars" -auto-approve
+          
+          # Capture outputs
+          echo "release_name=$(terraform output -raw release_name)" >> $GITHUB_OUTPUT
+          echo "namespace=$(terraform output -raw namespace)" >> $GITHUB_OUTPUT
+
+      - name: Verify production deployment
+        working-directory: infra/terraform
+        run: |
+          task status ENV=prod
+          
+          # Wait for pods to be ready
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=fastapi-challenge -n fastapi-challenge --timeout=300s
+          
+          # Verify all replicas are running
+          kubectl get deployment fastapi-challenge-fastapi-challenge -n fastapi-challenge
+          
+      - name: Run smoke tests
+        run: |
+          # Port forward for testing
+          kubectl port-forward -n fastapi-challenge svc/fastapi-challenge-fastapi-challenge 8080:8080 &
+          sleep 10
+          
+          # Basic health checks
+          curl -f http://localhost:8080/ || exit 1
+          curl -f http://localhost:8080/data || exit 1
+          
+          # Check that we get expected responses
+          response=$(curl -s http://localhost:8080/)
+          if [[ "$response" != *"Hello"* ]]; then
+            echo "Unexpected response: $response"
+            exit 1
+          fi
+
+      - name: Create deployment summary
+        run: |
+          echo "## 🎉 Production Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** Production" >> $GITHUB_STEP_SUMMARY
+          echo "**Release:** ${{ steps.deploy.outputs.release_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Namespace:** ${{ steps.deploy.outputs.namespace }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Deployment Details" >> $GITHUB_STEP_SUMMARY
+          kubectl get pods,svc -n fastapi-challenge >> $GITHUB_STEP_SUMMARY
+
+  cleanup-on-failure:
+    name: Cleanup on Failure
+    runs-on: ubuntu-latest
+    if: failure() && (needs.deploy-dev.result == 'failure' || needs.deploy-prod.result == 'failure')
+    needs: [deploy-dev, deploy-prod]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Setup Task
+        uses: arduino/setup-task@v1
+        with:
+          version: ${{ env.TASK_VERSION }}
+
+      - name: Configure kubectl
+        uses: azure/k8s-set-context@v3
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBE_CONFIG }}
+
+      - name: Cleanup failed deployments
+        working-directory: infra/terraform
+        run: |
+          # Try to cleanup both environments
+          if [ "${{ needs.deploy-dev.result }}" == "failure" ]; then
+            echo "Cleaning up failed dev deployment..."
+            task destroy ENV=dev || true
+          fi
+          
+          if [ "${{ needs.deploy-prod.result }}" == "failure" ]; then
+            echo "Cleaning up failed prod deployment..."
+            task destroy ENV=prod || true
+          fi
