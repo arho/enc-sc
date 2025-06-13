@@ -11,12 +11,12 @@ on:
         options:
         - dev
         - prod
-  push:
-    branches: [ main ]
-    paths:
-      - 'infra/**'
-      - 'app/**'
-      - 'Dockerfile'
+  # push:
+  #   branches: [ main ]
+  #   paths:
+  #     - 'infra/**'
+  #     - 'app/**'
+  #     - 'Dockerfile'
 
 env:
   TF_VERSION: "1.10.3"
