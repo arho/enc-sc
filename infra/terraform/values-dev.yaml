@@ -1,0 +1,22 @@
+replicaCount: 1
+
+api:
+  db:
+    password: "dev-password"
+  baseUrl: "/api"
+  logLevel: "debug"
+  maxConnections: 50
+
+ingress:
+  enabled: false
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: true

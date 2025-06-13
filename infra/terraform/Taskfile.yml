@@ -1,0 +1,68 @@
+version: '3'
+
+vars:
+  ENV: '{{.ENV | default "dev"}}'
+
+tasks:
+  default:
+    desc: List all tasks
+    cmds:
+      - task -a
+
+  init:
+    desc: Initialize Terraform
+    cmds:
+      - terraform init
+
+  plan:
+    desc: Plan Terraform deployment
+    deps: [init]
+    cmds:
+      - terraform plan -var="values_file=values-{{.ENV}}.yaml" -var="namespace=fastapi-challenge-{{.ENV}}" -var="release_name=fastapi-challenge-{{.ENV}}"
+
+  apply:
+    desc: Apply Terraform deployment
+    deps: [init]
+    cmds:
+      - terraform apply -var="values_file=values-{{.ENV}}.yaml" -var="namespace=fastapi-challenge-{{.ENV}}" -var="release_name=fastapi-challenge-{{.ENV}}" -auto-approve
+
+  destroy:
+    desc: Destroy Terraform deployment
+    cmds:
+      - terraform destroy -var="values_file=values-{{.ENV}}.yaml" -var="namespace=fastapi-challenge-{{.ENV}}" -var="release_name=fastapi-challenge-{{.ENV}}" -auto-approve
+
+  output:
+    desc: Show Terraform outputs
+    cmds:
+      - terraform output
+
+  port-forward:
+    desc: Port forward to the application
+    cmds:
+      - cmd: terraform output -raw port_forward_command
+        silent: true
+      - kubectl port-forward -n fastapi-challenge-{{.ENV}} svc/fastapi-challenge-{{.ENV}}-fastapi-challenge 8080:8080
+
+  logs:
+    desc: Show application logs
+    cmds:
+      - kubectl logs -n fastapi-challenge-{{.ENV}} -l app.kubernetes.io/name=fastapi-challenge --tail=50 -f
+
+  status:
+    desc: Show deployment status
+    cmds:
+      - kubectl get pods,svc -n fastapi-challenge-{{.ENV}}
+      - helm status fastapi-challenge-{{.ENV}} -n fastapi-challenge-{{.ENV}}
+
+  # Environment shortcuts
+  dev:
+    desc: Deploy to dev environment
+    cmds:
+      - task: apply
+        vars: {ENV: dev}
+
+  prod:
+    desc: Deploy to prod environment
+    cmds:
+      - task: apply
+        vars: {ENV: prod}
